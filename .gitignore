@@ -33,14 +33,14 @@
 
 # Folder
 .vscode
-bulid-debug
+build-debug
 build-release
 bin
 
 Shared/bin
-Server/bulid-debug
+Server/build-debug
 Server/build-release
 Server/bin
-Client/bulid-debug
+Client/build-debug
 Client/build-release
 Client/bin
