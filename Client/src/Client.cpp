@@ -53,7 +53,7 @@ void Client::SetStatus(Status status) {
 
 void Client::WaitingDataLoop() {
     while (GetStatus() == Status::Up) {
-        auto data_ = LoadData(); // Safe unique ptr
+        auto data_ = (proto_ == Proto::TCP ? TCPLoadData() : UDPLoadData()); // Safe unique ptr
         auto& data = *data_.get();
         if (data.Size()) {
             console_.Log(std::format("Server: \"{}\"", data.Buffer()));
@@ -91,7 +91,7 @@ void Client::CommandLoop() {
     }
 }
 
-std::unique_ptr<DataBuffer> Client::LoadData() {
+std::unique_ptr<DataBuffer> Client::TCPLoadData() {
     auto data = std::make_unique<DataBuffer>();
 
     size_t data_size = 0;
@@ -129,6 +129,64 @@ std::unique_ptr<DataBuffer> Client::LoadData() {
     
     data.reset(new DataBuffer(data_size));
     tcp::Recv(clinent_sock_, data.get()->Buffer(), data.get()->Size(), 0);
+    return data;
+}
+
+std::unique_ptr<DataBuffer> Client::UDPLoadData() {
+    auto data = std::make_unique<DataBuffer>();
+
+    size_t data_size = 0;
+    int err = 0;
+    sockaddr_storage addr;
+    socklen_t socklen = sizeof(sockaddr_storage);
+
+    int res = udp::RecvFrom(
+        clinent_sock_,
+        &data_size,
+        sizeof(data_size),
+        MSG_DONTWAIT,
+        (sockaddr*)&addr,
+        &socklen
+    );
+    if (res == 0) {
+        Stop();
+        return data;
+    } else if (res == -1) {
+        socklen_t len = sizeof(err);
+        getsockopt(clinent_sock_, SOL_SOCKET, SO_ERROR, (char*)&err, &len);
+        if (!err) {
+            err = errno;
+        }
+    }
+
+    switch (err) {
+    case 0:
+        break;
+    case ETIMEDOUT:
+    case ECONNRESET:
+    case EPIPE:
+        Stop();
+        // Fallthoughg
+    case EAGAIN:
+        return data;
+    default:
+        Stop();
+        return data;
+        break;
+    }
+
+    if (data_size == 0)
+        return data;
+    
+    data.reset(new DataBuffer(data_size));
+    udp::RecvFrom(
+        clinent_sock_,
+        data.get()->Buffer(),
+        data.get()->Size(),
+        0,
+        (sockaddr*)&addr,
+        &socklen
+    );
     return data;
 }
 

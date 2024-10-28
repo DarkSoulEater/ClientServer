@@ -31,7 +31,8 @@ private:
     void ConsoleLoop();
     void CommandLoop();
 
-    std::unique_ptr<DataBuffer> LoadData();
+    std::unique_ptr<DataBuffer> TCPLoadData();
+    std::unique_ptr<DataBuffer> UDPLoadData();
     
 public:
     Client(Proto proto, Port port) : proto_(proto), port_(port) {}

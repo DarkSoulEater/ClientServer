@@ -109,16 +109,16 @@ void Server::UDPSendTO(const std::string &msg, ID id) {
 
     auto& client = *client_;
 
-    size_t msg_size = msg.size() + 1; // TODO: Packed in one Diagram
+    size_t msg_size = msg.size(); // TODO: Packed in one Diagram
     int size_send_status = udp::SendTo(
         serv_socket_,
-        msg.c_str(),
-        msg.size(),
+        &msg_size,
+        sizeof(size_t),
         0,
         client.GetAddr(),
         client.GetAddrLen()
     );
-    if (size_send_status != msg.size()) {
+    if (size_send_status != sizeof(size_t)) {
         perror("Send");
         return;
     }
@@ -138,8 +138,7 @@ void Server::UDPSendTO(const std::string &msg, ID id) {
     }
 }
 
-void Server::TCPHandlingAcceptLoop()
-{
+void Server::TCPHandlingAcceptLoop() {
     if (proto_ == Proto::UDP)
         return;
 
