@@ -23,10 +23,10 @@ int udp::Connect(int sockfd, in_port_t port, in_addr_t sin_addr) {
     return connect(sockfd, (const sockaddr*)&addr, sizeof(addr));
 }
 
-ssize_t udp::Send(int sockfd, void *buf, size_t len, int flags) {
-    return send(sockfd, buf, len, flags);
+ssize_t udp::SendTo(int sockfd, const void *buf, size_t len, int flags, sockaddr *dest_addr, socklen_t addrlen) {
+    return sendto(sockfd, buf, len, flags, dest_addr, addrlen);
 }
 
-ssize_t udp::Recv(int sockfd, void *buf, size_t len, int flags) {
-    return recv(sockfd, buf, len, flags);
+ssize_t udp::RecvFrom(int sockfd, void *buf, size_t len, int flags, sockaddr *src_addr, socklen_t *addrlen) {
+    return recvfrom(sockfd, buf, len, flags, src_addr, addrlen);
 }

@@ -3,9 +3,21 @@
 #include <cstring>
 #include <cerrno>
 #include "TCP.hpp"
+#include "UDP.hpp"
+
+Client::Client(Socket socket) : id_(NewID()), socket_(socket), status_(SocketStatus::Connected), sock_len_(sizeof(sockaddr_storage)), port_(-1)
+{}
+
+Client::Client(Port port, const sockaddr_storage &addr, socklen_t len)  
+                              : id_(NewID()), socket_(-1)
+                              , status_(SocketStatus::Connected)
+                              , sockaddr_(addr)
+                              , sock_len_(len)
+                              , port_(port)
+{}
 
 bool Client::IsValid() {
-    return socket_ >= 0 && status_ == SocketStatus::Connected;
+    return (socket_ >= 0 || port_ != -1) && status_ == SocketStatus::Connected;
 }
 
 std::unique_ptr<DataBuffer> Client::LoadData() {

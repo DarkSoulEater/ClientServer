@@ -3,6 +3,7 @@
 #include <thread>
 #include <format>
 #include <string>
+#include <netdb.h>
 
 Server::Status Server::GetStatus() {
     std::lock_guard<std::mutex> lock(status_mtx_);
@@ -14,7 +15,134 @@ void Server::SetStatus(Status status) {
     status_ = status;
 }
 
-void Server::HandlingAcceptLoop() {
+Client *Server::FindClientByID(ID id) {
+    std::lock_guard<std::mutex> lock(clients_mtx_);
+    for (auto it = clients_.begin(); it != clients_.end(); ++it) {
+        auto& client = *it->get();
+
+        if (!client.IsValid())
+            continue;;
+    
+        if (client.GetID() == id)
+            return &client;
+    }
+    return nullptr;
+}
+
+Client *Server::FindClientByPort(Port port) {
+    std::lock_guard<std::mutex> lock(clients_mtx_);
+    for (auto it = clients_.begin(); it != clients_.end(); ++it) {
+        auto& client = *it->get();
+
+        if (!client.IsValid())
+            continue;
+    
+        if (client.GetPort() == port)
+            return &client;
+    }
+    return nullptr;
+}
+
+int Server::TCPInit() {
+    serv_socket_ = tcp::Socket();
+    if (serv_socket_ < 0) {
+        perror("TCP Socket: ");
+        return -1;
+    }
+
+    int bind_st = tcp::Bind(serv_socket_, port_);
+    if (bind_st < 0) {
+        perror("TCP Bind: ");
+        return -1;
+    }
+    
+    int listen_st = tcp::Listen(serv_socket_, 2);
+    if (listen_st < 0) {
+        perror("TCP Listen");
+        return -1;
+    }
+    return 0;
+}
+
+int Server::UDPInit() {
+    serv_socket_ = udp::Socket();
+    if (serv_socket_ < 0) {
+        perror("UDP Socket: ");
+        return -1;
+    }
+
+    int bind_st = udp::Bind(serv_socket_, port_);
+    if (bind_st < 0) {
+        perror("UDP Bind: ");
+        return -1;
+    }
+    return 0;
+}
+
+void Server::TCPSendTo(const std::string &msg, ID id) {
+    auto* client_ = FindClientByID(id);
+    if (client_ == nullptr) {
+        console_.Log(std::format("client ID={} doesn't connect", id));
+        return;
+    }
+
+    auto& client = *client_;
+    Socket sock = client.GetSocket();
+
+    if (sock < 0) {
+        console_.Log(std::format("client ID={} does not connect", id));
+        return;
+    }
+
+    size_t size = msg.size() + 1;
+    tcp::Send(sock, &size, sizeof(size_t), 0);
+    tcp::Send(sock, msg.c_str(), size, 0);
+    console_.Log(std::format("Msg[{}] send to {}", msg, id));
+}
+
+void Server::UDPSendTO(const std::string &msg, ID id) {
+    auto* client_ = FindClientByID(id);
+    if (client_ == nullptr) {
+        console_.Log(std::format("client ID={} doesn't connect", id));
+        return;
+    }
+
+    auto& client = *client_;
+
+    size_t msg_size = msg.size() + 1; // TODO: Packed in one Diagram
+    int size_send_status = udp::SendTo(
+        serv_socket_,
+        msg.c_str(),
+        msg.size(),
+        0,
+        client.GetAddr(),
+        client.GetAddrLen()
+    );
+    if (size_send_status != msg.size()) {
+        perror("Send");
+        return;
+    }
+
+    int send_status = udp::SendTo(
+        serv_socket_,
+        msg.c_str(),
+        msg.size(),
+        0,
+        client.GetAddr(),
+        client.GetAddrLen()
+    );
+    if (send_status != msg.size()) {
+        perror("Send");
+    } else {
+        console_.Log(std::format("Msg[{}] send to {}", msg, id));
+    }
+}
+
+void Server::TCPHandlingAcceptLoop()
+{
+    if (proto_ == Proto::UDP)
+        return;
+
     while (GetStatus() == Status::Up) {
         Socket client_sock = tcp::Accept(serv_socket_);
         if (client_sock < 0 || GetStatus() == Status::Close)
@@ -28,7 +156,10 @@ void Server::HandlingAcceptLoop() {
     }
 }
 
-void Server::WaitingDataLoop() {
+void Server::TCPWaitingDataLoop() {
+    if (proto_ == Proto::UDP)
+        return;
+
     while (GetStatus() == Status::Up) {
         { // Lock client_mtx_
             std::lock_guard<std::mutex> lock(clients_mtx_);
@@ -48,6 +179,102 @@ void Server::WaitingDataLoop() {
         } // End lock clients_mtx_
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
+}
+
+void Server::UDPWaitingDataLoop() {
+    while (GetStatus() == Status::Up) {
+        sockaddr_storage addr;
+        socklen_t socklen = sizeof(sockaddr_storage);
+
+        auto data = UDPLoadData((sockaddr*)&addr, &socklen);
+
+        // Find client
+        char host[NI_MAXHOST], service[NI_MAXSERV];
+        int getname_st = getnameinfo(
+            (sockaddr*)&addr,
+            socklen,
+            host,
+            NI_MAXHOST,
+            service,
+            NI_MAXSERV,
+            NI_NUMERICSERV
+        );
+
+        if (data.get()->Size() && getname_st == 0) {
+            // console_.Log(std::format("Recieve {} bytes from {}:{}. \"{}\"", data->Size(), host, service, data->Buffer()));
+
+            Port port = std::stoi(service);
+            auto* client = FindClientByPort(port);
+
+            if (client == nullptr) {
+                auto client_ = std::make_unique<Client>(port, addr, socklen);
+                client = client_.get();
+                console_.Log(std::format("Connect new client: ID = {}", client_->GetID()));
+
+                std::lock_guard<std::mutex> lock(clients_mtx_);
+                clients_.emplace_back(std::move(client_));
+            }
+
+            console_.Log(std::format("Recieved[{}]: \"{}\"", client->GetID(), data->Buffer()));
+        }
+        
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    
+}
+
+std::unique_ptr<DataBuffer> Server::UDPLoadData(sockaddr* sockaddr, socklen_t* socklen) {
+    auto data = std::make_unique<DataBuffer>();
+
+    size_t data_size = 0;
+    int err = 0;
+    int res = udp::RecvFrom(
+        serv_socket_,
+        &data_size, 
+        sizeof(data_size), 
+        MSG_DONTWAIT, 
+        sockaddr,
+        socklen
+    );
+    if (res == 0) {
+        return data;
+    } else if (res == -1) {
+        socklen_t len = sizeof(err);
+        getsockopt(serv_socket_, SOL_SOCKET, SO_ERROR, (char*)&err, &len);
+        if (!err) {
+            err = errno;
+        }
+    }
+
+    switch (err) {
+    case 0:
+        break;
+    case ETIMEDOUT:
+    case ECONNRESET:
+    case EPIPE:
+        // Fallthoughg
+    case EAGAIN:
+        return data;
+    default:
+        // std::cerr << "Unhandled error!\n"
+        //     << "Code: " << err << " Err: " << std::strerror(err) << '\n';
+        return data;
+        break;
+    }
+
+    if (data_size == 0)
+        return data;
+    
+    data.reset(new DataBuffer(data_size));
+    udp::RecvFrom(
+        serv_socket_,
+        data.get()->Buffer(),
+        data.get()->Size(), 
+        MSG_DONTWAIT, 
+        sockaddr,
+        socklen
+    );
+    return data;
 }
 
 void Server::Disconnect(ClientList::iterator it) {
@@ -128,35 +355,23 @@ void Server::PrintHistory() {
 }
 
 int Server::Start() {
-    serv_socket_ = tcp::Socket();
-    if (serv_socket_ < 0) {
-        perror("TCP Socket: ");
-        return -1;
-    }
-
-    int bind_st = tcp::Bind(serv_socket_, port_);
-    if (bind_st < 0) {
-        perror("TCP Bind: ");
-        return -1;
-    }
-    
-    int listen_st = tcp::Listen(serv_socket_, 2);
-    if (listen_st < 0) {
-        perror("TCP Listen");
-        return -1;
-    }
+    int init_st = (proto_ == Proto::TCP ? TCPInit() : UDPInit());
+    if (init_st < 0)
+        return init_st;
 
     SetStatus(Status::Up);
 
-    auto accept_handler_thread_ = std::thread([this]{HandlingAcceptLoop();});
-    auto data_waiter_thread_    = std::thread([this]{WaitingDataLoop();});
-    auto console_loop_          = std::thread([this]{ConsoleLoop();});
-    auto command_loop_          = std::thread([this]{CommandLoop();});
+    auto tcp_accept_handler_thread_ = std::thread([this]{TCPHandlingAcceptLoop();});
+    auto tcp_data_waiter_thread_    = std::thread([this]{TCPWaitingDataLoop();});
+    auto udp_data_waiter_thread_    = std::thread([this]{UDPWaitingDataLoop();});
+    auto console_loop_              = std::thread([this]{ConsoleLoop();});
+    auto command_loop_              = std::thread([this]{CommandLoop();});
 
     console_.Log(std::format("Server started with protocol:{}, port:{}.", proto_ == Proto::TCP ? "TCP" : "UDP", port_));
 
-    accept_handler_thread_.join();
-    data_waiter_thread_.join();
+    tcp_accept_handler_thread_.join();
+    tcp_data_waiter_thread_.join();
+    udp_data_waiter_thread_.join();
     console_loop_.join();
     command_loop_.join();
     return 0;
@@ -167,26 +382,9 @@ void Server::Stop() {
 }
 
 void Server::SendTo(const std::string& msg, ID id) {
-    Socket sock = -1;
-    {
-        std::lock_guard<std::mutex> lock(clients_mtx_);
-        for (auto it = clients_.begin(); it != clients_.end(); ++it) {
-            auto& client = *it->get();
-            console_.Log(std::format("{}", client.GetID()));
-            if (client.GetID() == id) {
-                sock = client.GetSocket();
-                break;
-            }
-        }
-    } // Unlock clients_mtx_
-
-    if (sock < 0) {
-        console_.Log(std::format("client ID={} does not connect", id));
-        return;
+    if (proto_ == Proto::TCP) {
+        TCPSendTo(msg, id);
+    } else {
+        UDPSendTO(msg, id);
     }
-
-    size_t size = msg.size() + 1;
-    send(sock, &size, sizeof(size_t), 0);
-    send(sock, msg.c_str(), size, 0);
-    console_.Log(std::format("Msg[{}] send to {}", msg, id));
 }

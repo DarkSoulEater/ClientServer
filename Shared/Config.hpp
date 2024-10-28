@@ -5,6 +5,7 @@
 
 typedef in_port_t Port;
 typedef int Socket;
+typedef size_t ID;
 
 enum class Proto {
     TCP,
@@ -14,6 +15,11 @@ enum class Proto {
 enum class Device {
     Server,
     Client
+};
+
+enum class SocketStatus {
+    Connected,
+    Disconnected
 };
 
 const int kDefPort = 10010;

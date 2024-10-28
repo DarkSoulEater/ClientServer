@@ -15,6 +15,10 @@ private:
     } status_ = Status::Close;
     std::mutex status_mtx_;
 
+    
+    int TCPInit();
+    int UDPInit();
+
     Status GetStatus();
     void SetStatus(Status status);
 

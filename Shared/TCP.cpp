@@ -31,7 +31,7 @@ int tcp::Accept(int sockfd) {
     return accept(sockfd, NULL, NULL);
 }
 
-ssize_t tcp::Send(int sockfd, void *buf, size_t len, int flags) {
+ssize_t tcp::Send(int sockfd, const void *buf, size_t len, int flags) {
     return send(sockfd, buf, len, flags);
 }
 

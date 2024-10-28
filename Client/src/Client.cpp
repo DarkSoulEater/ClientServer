@@ -3,6 +3,44 @@
 #include "TCP.hpp"
 #include "UDP.hpp"
 
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+
+int Client::TCPInit() {
+    clinent_sock_ = tcp::Socket();
+    if (clinent_sock_ < 0) {
+        perror("TCP Socket");
+        return -1;
+    }
+
+    int connect_st = tcp::Connect(clinent_sock_, port_);
+    if (connect_st < 0) {
+        perror("TCP Connect");
+        return -1;
+    }
+    return 0;
+}
+
+int Client::UDPInit() {
+    clinent_sock_ = udp::Socket();
+    if (clinent_sock_ < 0) {
+        perror("UDP Socket");
+        return -1;
+    }
+
+    int connect_st = tcp::Connect(clinent_sock_, port_);
+    if (connect_st < 0) {
+        perror("UDP Connect");
+        return -1;
+    }
+    return 0;
+}
+
 Client::Status Client::GetStatus() {
     std::lock_guard<std::mutex> lock(status_mtx_);
     return status_;
@@ -45,7 +83,7 @@ void Client::CommandLoop() {
             } break;
 
             default:
-                console_.Print("[Err]: nknow command type");
+                console_.Print("[Err]: Unknow command type");
                 break;
             }
         }
@@ -95,16 +133,9 @@ std::unique_ptr<DataBuffer> Client::LoadData() {
 }
 
 int Client::Start() {
-    clinent_sock_ = tcp::Socket();
-    if (clinent_sock_ < 0) {
-        perror("TCP Socket");
-        return -1;
-    }
-
-    int connect_st = tcp::Connect(clinent_sock_, port_);
-    if (connect_st < 0) {
-        perror("TCP Connect");
-        return -1;
+    int init_st = (proto_ == Proto::TCP ? TCPInit() : UDPInit());
+    if (init_st < 0) {
+        return init_st;
     }
 
     SetStatus(Status::Up);

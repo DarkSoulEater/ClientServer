@@ -13,7 +13,7 @@ namespace tcp {
 
     int Accept(int sockfd);
 
-    ssize_t Send(int sockfd, void *buf, size_t len, int flags);
+    ssize_t Send(int sockfd, const void *buf, size_t len, int flags);
 
     ssize_t Recv(int sockfd, void *buf, size_t len, int flags);
 };

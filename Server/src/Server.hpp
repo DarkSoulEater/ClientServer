@@ -35,8 +35,19 @@ class Server {
     std::mutex clients_history_mtx_;
     ClientVec clients_history_;
 
-    void HandlingAcceptLoop();
-    void WaitingDataLoop();
+    Client* FindClientByID(ID id);
+    Client* FindClientByPort(Port port);
+
+    int TCPInit();
+    int UDPInit();
+
+    void TCPSendTo(const std::string& msg, ID id);
+    void UDPSendTO(const std::string& msg, ID id);
+
+    void TCPHandlingAcceptLoop();
+    void TCPWaitingDataLoop();
+    void UDPWaitingDataLoop();
+    std::unique_ptr<DataBuffer> UDPLoadData(sockaddr* sockaddr, socklen_t* socklen);
 
     void Disconnect(ClientList::iterator it);
 
