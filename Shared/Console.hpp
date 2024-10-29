@@ -191,6 +191,7 @@ private:
             
             if (msg.empty()) {
                 Log("Entered empty msg. Skip");
+                deleteLine();
                 return 0;
             }
             
@@ -227,6 +228,7 @@ private:
             
             if (msg.empty()) {
                 Log("Entered empty msg. Skip");
+                deleteLine();
                 return 0;
             }
             
