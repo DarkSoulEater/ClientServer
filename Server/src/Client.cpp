@@ -8,12 +8,13 @@
 Client::Client(Socket socket) : id_(NewID()), socket_(socket), status_(SocketStatus::Connected), sock_len_(sizeof(sockaddr_storage)), port_(-1)
 {}
 
-Client::Client(Port port, const sockaddr_storage &addr, socklen_t len)  
+Client::Client(Port port, Time timeout, const sockaddr_storage &addr, socklen_t len)  
                               : id_(NewID()), socket_(-1)
                               , status_(SocketStatus::Connected)
                               , sockaddr_(addr)
                               , sock_len_(len)
                               , port_(port)
+                              , timeout_(timeout)
 {}
 
 bool Client::IsValid() {

@@ -35,9 +35,17 @@ class Server {
     std::mutex clients_history_mtx_;
     ClientVec clients_history_;
 
+    std::mutex time_tmx_;
+    Time time_ = 0;
+    const Time kLiveTime = 200;
+
+    void IncTime();
+    Time GetTime();
+
     Client* FindClientByID(ID id);
     Client* FindHistoryClientByID(ID id);
     Client* FindClientByPort(Port port);
+    Client* FindHistoryClientByPort(Port port);
 
     int TCPInit();
     int UDPInit();
@@ -51,6 +59,11 @@ class Server {
     std::unique_ptr<DataBuffer> UDPLoadData(sockaddr* sockaddr, socklen_t* socklen);
 
     void Disconnect(ClientList::iterator it);
+
+    void CheckTimeOut();
+    void Forget(ID id); 
+    void Remember(ID id);
+
 
 
     Console console_;

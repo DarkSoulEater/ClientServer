@@ -14,6 +14,7 @@ class Client {
     sockaddr_storage sockaddr_;
     socklen_t sock_len_;
     Port port_;
+    Time timeout_;
 
     ID NewID() {
         static ID id = 0;
@@ -24,7 +25,7 @@ class Client {
     std::vector<MsgStatus> msg_status_;
 public:
     Client(Socket socket);
-    Client(Port port, const sockaddr_storage& addr, socklen_t len);
+    Client(Port port, Time timeout, const sockaddr_storage& addr, socklen_t len);
     ~Client() {
         if (socket_ >= 0) {
             close(socket_);
@@ -44,6 +45,14 @@ public:
     std::unique_ptr<DataBuffer> LoadData();
 
     void AddMsg(std::unique_ptr<DataBuffer> msg, MsgStatus status);
+
+    void UpdateTimeout(Time timeout) {
+        timeout_ = timeout;
+    }
+
+    Time GetTimeout() {
+        return timeout_;
+    }
 
     ID GetID() {
         return id_;

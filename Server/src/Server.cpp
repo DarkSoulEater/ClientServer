@@ -15,6 +15,16 @@ void Server::SetStatus(Status status) {
     status_ = status;
 }
 
+void Server::IncTime() {
+    std::lock_guard<std::mutex> lock(time_tmx_);
+    ++time_;
+}
+
+Time Server::GetTime() {
+    std::lock_guard<std::mutex> lock(time_tmx_);
+    return time_;
+}
+
 Client *Server::FindClientByID(ID id) {
     std::lock_guard<std::mutex> lock(clients_mtx_);
     for (auto it = clients_.begin(); it != clients_.end(); ++it) {
@@ -47,6 +57,17 @@ Client *Server::FindClientByPort(Port port) {
 
         if (!client.IsValid())
             continue;
+    
+        if (client.GetPort() == port)
+            return &client;
+    }
+    return nullptr;
+}
+
+Client *Server::FindHistoryClientByPort(Port port) {
+    std::lock_guard<std::mutex> lock(clients_history_mtx_);
+    for (auto it = clients_history_.begin(); it != clients_history_.end(); ++it) {
+        auto& client = *it->get();
     
         if (client.GetPort() == port)
             return &client;
@@ -149,6 +170,7 @@ void Server::UDPSendTO(const std::string &msg, ID id) {
     } else {
         console_.Log(std::format("Msg[{}] send to {}", msg, id));
         client.AddMsg(std::make_unique<DataBuffer>(msg), MsgStatus::Server);
+        client.UpdateTimeout(GetTime() + kLiveTime);
     }
 }
 
@@ -219,15 +241,24 @@ void Server::UDPWaitingDataLoop() {
 
             Port port = std::stoi(service);
             auto* client = FindClientByPort(port);
+            if (client == nullptr) {
+                client = FindHistoryClientByPort(port);
+
+                if (client != nullptr) {
+                    Remember(client->GetID());
+                }
+            }
 
             if (client == nullptr) {
-                auto client_ = std::make_unique<Client>(port, addr, socklen);
+                auto client_ = std::make_unique<Client>(port, GetTime() + kLiveTime, addr, socklen);
                 client = client_.get();
                 console_.Log(std::format("Connect new client: ID = {}", client_->GetID()));
 
                 std::lock_guard<std::mutex> lock(clients_mtx_);
                 clients_.emplace_back(std::move(client_));
             }
+
+            client->UpdateTimeout(GetTime() + kLiveTime);
 
             if (data->Size() == 0) {
 
@@ -238,6 +269,8 @@ void Server::UDPWaitingDataLoop() {
         }
         
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        IncTime();
+        CheckTimeOut();
     }
     
 }
@@ -302,6 +335,52 @@ void Server::Disconnect(ClientList::iterator it) {
     console_.Log(std::format("Client {} disconnected", it->get()->GetID()));
     clients_history_.push_back(std::move(*it));
     clients_.erase(it);
+}
+
+void Server::CheckTimeOut() {
+    Time time = GetTime();
+    clients_mtx_.lock();
+    for (auto it = clients_.begin(); it != clients_.end();) {
+        auto& client = *it->get();
+        ++it;
+    
+        if (client.GetTimeout() < time) {
+            clients_mtx_.unlock();
+            Forget(client.GetID());
+            clients_mtx_.lock();
+        }
+    }
+    clients_mtx_.unlock();
+}
+
+void Server::Forget(ID id) {
+    std::lock_guard<std::mutex> lock(clients_mtx_);
+    std::lock_guard<std::mutex> his_lock(clients_history_mtx_);
+    for (auto it = clients_.begin(); it != clients_.end(); ++it) {
+        auto& client = *it->get();
+    
+        if (client.GetID() == id) {
+            clients_history_.push_back(std::move(*it));
+            clients_.erase(it);
+            console_.Log(std::format("Forget client {}", id));
+            return;
+        }
+    }
+}
+
+void Server::Remember(ID id) {
+    std::lock_guard<std::mutex> lock(clients_mtx_);
+    std::lock_guard<std::mutex> his_lock(clients_history_mtx_);
+    for (auto it = clients_history_.begin(); it != clients_history_.end(); ++it) {
+        auto& client = *it->get();
+    
+        if (client.GetID() == id) {
+            clients_.push_back(std::move(*it));
+            clients_history_.erase(it);
+            console_.Log(std::format("Remember client {}", id));
+            return;
+        }
+    }
 }
 
 void Server::ConsoleLoop() {

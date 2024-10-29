@@ -6,6 +6,7 @@
 typedef in_port_t Port;
 typedef int Socket;
 typedef size_t ID;
+typedef size_t Time;
 
 enum class Proto {
     TCP,
