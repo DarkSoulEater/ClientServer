@@ -150,9 +150,9 @@ private:
         Print("---------------- Help ----------------", false);
         Print("Server commands:", false);
         Print("\texit\t\t- Close server", false);
-        Print("\tsend [ID] [MSG]\t\t- Send message to ID client", false);
+        Print("\tsend [ID] [MSG]\t- Send message to ID client", false);
         Print("\thistory\t\t- Print list disconnect clients", false);
-        Print("\tdialog [ID]\t\t- Print all message between client and server", false);
+        Print("\tdialog [ID]\t- Print all message between client and server", false);
         deleteLine();
     }
 
