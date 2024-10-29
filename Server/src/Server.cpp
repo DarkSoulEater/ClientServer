@@ -29,6 +29,17 @@ Client *Server::FindClientByID(ID id) {
     return nullptr;
 }
 
+Client *Server::FindHistoryClientByID(ID id) {
+    std::lock_guard<std::mutex> lock(clients_history_mtx_);
+    for (auto it = clients_history_.begin(); it != clients_history_.end(); ++it) {
+        auto& client = *it->get();
+    
+        if (client.GetID() == id)
+            return &client;
+    }
+    return nullptr;
+}
+
 Client *Server::FindClientByPort(Port port) {
     std::lock_guard<std::mutex> lock(clients_mtx_);
     for (auto it = clients_.begin(); it != clients_.end(); ++it) {
@@ -98,6 +109,8 @@ void Server::TCPSendTo(const std::string &msg, ID id) {
     tcp::Send(sock, &size, sizeof(size_t), 0);
     tcp::Send(sock, msg.c_str(), size, 0);
     console_.Log(std::format("Msg[{}] send to {}", msg, id));
+    auto data = std::make_unique<DataBuffer>(msg.size());
+    client.AddMsg(std::make_unique<DataBuffer>(msg), MsgStatus::Server);
 }
 
 void Server::UDPSendTO(const std::string &msg, ID id) {
@@ -135,6 +148,7 @@ void Server::UDPSendTO(const std::string &msg, ID id) {
         perror("Send");
     } else {
         console_.Log(std::format("Msg[{}] send to {}", msg, id));
+        client.AddMsg(std::make_unique<DataBuffer>(msg), MsgStatus::Server);
     }
 }
 
@@ -172,6 +186,7 @@ void Server::TCPWaitingDataLoop() {
 
                     if (data.Size()) {
                         console_.Log(std::format("Recieved[{}]: \"{}\"", client.GetID(), data.Buffer()));
+                        client.AddMsg(std::move(data_), MsgStatus::Client);
                     }
                 }
             }
@@ -214,7 +229,12 @@ void Server::UDPWaitingDataLoop() {
                 clients_.emplace_back(std::move(client_));
             }
 
-            console_.Log(std::format("Recieved[{}]: \"{}\"", client->GetID(), data->Buffer()));
+            if (data->Size() == 0) {
+
+            } else {
+                console_.Log(std::format("Recieved[{}]: \"{}\"", client->GetID(), data->Buffer()));
+                client->AddMsg(std::move(data), MsgStatus::Client);
+            }
         }
         
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -312,6 +332,10 @@ void Server::CommandLoop() {
                 std::thread([this]{PrintHistory();}).detach();
             } break;
 
+            case Command::Type::Dialog: {
+                std::thread([this, &cmd]{PrintMsgHistory(cmd.id_);}).detach();
+            } break;
+
             default:
                 console_.Print("[Err]: Unknow command type");
                 break;
@@ -350,6 +374,31 @@ void Server::PrintHistory() {
     for (auto it = clients_history_.begin(); it != clients_history_.end(); ++it) {
         auto& client = *it->get();
         console_.Print("\t" + std::to_string(client.GetID()) + ": \n");
+    }
+}
+
+void Server::PrintMsgHistory(ID id) {
+    auto* client_ = FindClientByID(id);
+    if (client_ == nullptr) {
+        client_ = FindHistoryClientByID(id);
+    }
+    if (client_ == nullptr) {
+        console_.Log(std::format("Client {} doesn't exist", id));
+        return;
+    }
+    auto& client = *client_;
+
+    size_t msg_cnt = client.GetMsgCount();
+    console_.Print(std::format("------------------------ Client ID = {} ------------------------", client.GetID()));
+    for (size_t k = 0; k < msg_cnt; ++k) {
+        MsgStatus msg_status = client.GetMsgStatus(k);
+        auto& msg = client.GetMsg(k);
+        console_.Print(
+            std::format("{}: {}", 
+                msg_status == MsgStatus::Client ? "Client" : "Server",
+                msg.Buffer()
+            )
+        );
     }
 }
 

@@ -149,9 +149,10 @@ private:
     void PrintServerHelp() {
         Print("---------------- Help ----------------", false);
         Print("Server commands:", false);
-        Print("\texit - Close server", false);
-        Print("\tsend [ID] [MSG] - Send message to ID client", false);
-        Print("\thistory - Print list disconnect clients", false);
+        Print("\texit\t\t- Close server", false);
+        Print("\tsend [ID] [MSG]\t\t- Send message to ID client", false);
+        Print("\thistory\t\t- Print list disconnect clients", false);
+        Print("\tdialog [ID]\t\t- Print all message between client and server", false);
         deleteLine();
     }
 
@@ -202,6 +203,17 @@ private:
             commands.push_back(Command(Command::Type::ShowClients));
         } else if (cmd == "history") {
             commands.push_back(Command(Command::Type::History));
+        } else if (cmd == "dialog") {
+            size_t id;
+            std::string sid;
+            ss >> id;
+            if (ss.fail()) {
+                Log("For dialog need client ID");
+                Log("Enter \"help\" to learn how to use send");
+                deleteLine();
+                return 0;
+            }
+            commands.push_back(Command(Command::Type::Dialog, id));
         } else {
             cputs("[Log]: Unknow command ");
             cputs(cmd.c_str());

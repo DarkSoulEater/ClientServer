@@ -17,6 +17,8 @@ enum class Device {
     Client
 };
 
+typedef Device MsgStatus;
+
 enum class SocketStatus {
     Connected,
     Disconnected

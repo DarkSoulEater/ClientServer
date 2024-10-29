@@ -64,3 +64,8 @@ std::unique_ptr<DataBuffer> Client::LoadData() {
     tcp::Recv(socket_, data.get()->Buffer(), data.get()->Size(), 0);
     return data;
 }
+
+void Client::AddMsg(std::unique_ptr<DataBuffer> msg, MsgStatus status) {
+    msg_history_.push_back(std::move(msg));
+    msg_status_.push_back(status);
+}

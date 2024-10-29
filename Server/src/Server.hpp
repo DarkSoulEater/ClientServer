@@ -36,6 +36,7 @@ class Server {
     ClientVec clients_history_;
 
     Client* FindClientByID(ID id);
+    Client* FindHistoryClientByID(ID id);
     Client* FindClientByPort(Port port);
 
     int TCPInit();
@@ -60,6 +61,7 @@ class Server {
 
     void PrintClients();
     void PrintHistory();
+    void PrintMsgHistory(ID id);
 public:
     Server(Proto proto, Port port) : proto_(proto), port_(port) {}
     ~Server() {
@@ -70,8 +72,6 @@ public:
 
     int Start();
     void Stop();
-
-    void DisconnectAll();
 
     void SendTo(const std::string& msg, ID id);
 };

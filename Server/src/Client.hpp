@@ -1,6 +1,7 @@
 #pragma once
 #include <unistd.h>
 #include <memory>
+#include <vector>
 #include "DataBuffer.hpp"
 #include "Config.hpp"
 
@@ -18,6 +19,9 @@ class Client {
         static ID id = 0;
         return id++;
     }
+
+    std::vector<std::unique_ptr<DataBuffer>> msg_history_;
+    std::vector<MsgStatus> msg_status_;
 public:
     Client(Socket socket);
     Client(Port port, const sockaddr_storage& addr, socklen_t len);
@@ -39,6 +43,8 @@ public:
     bool IsValid();
     std::unique_ptr<DataBuffer> LoadData();
 
+    void AddMsg(std::unique_ptr<DataBuffer> msg, MsgStatus status);
+
     ID GetID() {
         return id_;
     }
@@ -53,5 +59,17 @@ public:
 
     socklen_t GetAddrLen() {
         return sock_len_;
+    }
+
+    size_t GetMsgCount() {
+        return msg_history_.size();
+    }
+
+    const DataBuffer& GetMsg(size_t k) {
+        return *msg_history_[k].get();
+    }
+
+    MsgStatus GetMsgStatus(size_t k) {
+        return msg_status_[k];
     }
 };
