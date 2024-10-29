@@ -202,6 +202,12 @@ int Client::Start() {
     auto console_loop_       = std::thread([this]{ConsoleLoop();});
     auto command_loop_       = std::thread([this]{CommandLoop();});
 
+    console_.Log(std::format(
+        "Client started with protocol:{}, port:{}."
+      , proto_ == Proto::TCP ? "TCP" : "UDP"
+      , port_
+    ));
+
     data_waiter_thread_.join();
     console_loop_.join();
     command_loop_.join();
@@ -217,5 +223,5 @@ void Client::Send(const std::string &msg) {
     size_t size = msg.size() + 1;
     send(clinent_sock_, &size, sizeof(size_t), 0);
     send(clinent_sock_, msg.c_str(), size, 0);
-    console_.Log(std::format("Msg[{}] send to server", msg));
+    console_.Log(std::format("[{}] send to server", msg));
 }
