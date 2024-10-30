@@ -128,7 +128,14 @@ std::unique_ptr<DataBuffer> Client::TCPLoadData() {
         return data;
     
     data.reset(new DataBuffer(data_size));
-    tcp::Recv(clinent_sock_, data.get()->Buffer(), data.get()->Size(), 0);
+
+    ssize_t recv_size = 0;
+    do {
+        ssize_t recv_count = tcp::Recv(clinent_sock_, data.get()->Buffer(), data.get()->Size(), 0);
+        if (recv_count > 0) {
+            recv_size += recv_count;
+        }
+    } while(recv_size < data_size);
     return data;
 }
 

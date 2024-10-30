@@ -218,6 +218,9 @@ void Server::TCPWaitingDataLoop() {
 }
 
 void Server::UDPWaitingDataLoop() {
+    if (proto_ == Proto::TCP)
+        return;
+        
     while (GetStatus() == Status::Up) {
         sockaddr_storage addr;
         socklen_t socklen = sizeof(sockaddr_storage);
