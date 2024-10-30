@@ -18,7 +18,7 @@ int Client::TCPInit() {
         return -1;
     }
 
-    int connect_st = tcp::Connect(clinent_sock_, port_);
+    int connect_st = tcp::Connect(clinent_sock_, port_, serv_ip_);
     if (connect_st < 0) {
         perror("TCP Connect");
         return -1;
@@ -33,7 +33,7 @@ int Client::UDPInit() {
         return -1;
     }
 
-    int connect_st = tcp::Connect(clinent_sock_, port_);
+    int connect_st = tcp::Connect(clinent_sock_, port_, serv_ip_);
     if (connect_st < 0) {
         perror("UDP Connect");
         return -1;
@@ -210,9 +210,10 @@ int Client::Start() {
     auto command_loop_       = std::thread([this]{CommandLoop();});
 
     console_.Log(std::format(
-        "Client started with protocol:{}, port:{}."
+        "Client started with protocol:{}, port:{}, server_ip:{}.{}.{}.{}"
       , proto_ == Proto::TCP ? "TCP" : "UDP"
       , port_
+      , (serv_ip_ & 0xff000000) >> 24, (serv_ip_ & 0x00ff0000) >> 16, (serv_ip_ & 0x0000ff00) >> 8, (serv_ip_ & 0x000000ff)
     ));
 
     data_waiter_thread_.join();

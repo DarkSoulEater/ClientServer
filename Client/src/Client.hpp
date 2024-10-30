@@ -8,6 +8,7 @@ private:
     Socket clinent_sock_;
     Proto proto_;
     Port port_;
+    in_addr_t serv_ip_;
 
     enum class Status {
         Up,
@@ -35,7 +36,7 @@ private:
     std::unique_ptr<DataBuffer> UDPLoadData();
     
 public:
-    Client(Proto proto, Port port) : proto_(proto), port_(port) {}
+    Client(Proto proto, Port port, in_addr_t server_ip) : proto_(proto), port_(port), serv_ip_(server_ip) {}
     ~Client() {
         if (clinent_sock_ >= 0) {
             close(clinent_sock_);
