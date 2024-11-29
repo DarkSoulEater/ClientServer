@@ -20,6 +20,10 @@ void Server::SetStatus(Status status) {
 }
 
 bool Server::InitTLS() {
+    if (crt_path_ == nullptr || key_path_ == nullptr) {
+        return false;
+    }
+
     ssl_ctx_ = SSL_CTX_new(TLS_method());
     if (!ssl_ctx_) {
         ERR_print_errors_fp(stderr);
@@ -27,10 +31,10 @@ bool Server::InitTLS() {
     }
 
 
-    if (SSL_CTX_use_certificate_file(ssl_ctx_, "./ca/server.crt", SSL_FILETYPE_PEM) != 1) {
+    if (SSL_CTX_use_certificate_file(ssl_ctx_, crt_path_, SSL_FILETYPE_PEM) != 1) {
         return false;
     }
-    if (SSL_CTX_use_PrivateKey_file(ssl_ctx_, "./ca/server.key", SSL_FILETYPE_PEM) != 1) {
+    if (SSL_CTX_use_PrivateKey_file(ssl_ctx_, key_path_, SSL_FILETYPE_PEM) != 1) {
         return false;
     } 
 
@@ -40,7 +44,7 @@ bool Server::InitTLS() {
 
     SSL_CTX_set_options(ssl_ctx_, SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3);
 
-    console_.Log("Activate TLS supported");
+    console_.Log(std::format("Activate TLS supported [crt:{}, key:{}]", crt_path_, key_path_));
     return true;
 }
 

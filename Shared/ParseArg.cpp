@@ -15,6 +15,8 @@ Args ParseArgs(const int argc, const char* arg[], Device device) {
     Proto proto = Proto::TCP;
     Port port = kDefPort;
     in_addr_t ip = INADDR_LOOPBACK;
+    const char* key_path = "ca/server.key";
+    const char* cert_path = "ca/server.crt";
     for (size_t k = 1; k < argc; ++k) {
         if (strcmp(arg[k], "-P") == 0) {
             if (++k >= argc) {
@@ -58,16 +60,33 @@ Args ParseArgs(const int argc, const char* arg[], Device device) {
                 ip = ip_res.value();
                 printf("IPa: %08x\n", ip); 
             }
+        } else if (device == Device::Server && strcmp(arg[k], "-k") == 0) {
+            if (++k >= argc) {
+                std::cout << "Error: Protocol not set. --help for more information\n";
+                exit(1);
+            }
+            key_path = arg[k];
+        } else if (device == Device::Server && strcmp(arg[k], "-c") == 0) {
+            if (++k >= argc) {
+                std::cout << "Error: Protocol not set. --help for more information\n";
+                exit(1);
+            }
+            cert_path = arg[k];
         } else if (strcmp(arg[k], "--help") == 0
                 || strcmp(arg[k], "-h")     == 0) {
             std::cout << "Usage " << arg[0] << " [options]\n";
             std::cout << "Options:\n";
             std::cout << "\t-p <Port>\t\t Set port\n";
             std::cout << "\t-P <TCP/UDP>\t\t Set protocol\n";
+            if (device == Device::Server) {
+                std::cout << "\t-k <PathToFile>\t\t Set path to private key file\n";
+                std::cout << "\t-c <PathToFile>\t\t Set path to certificate key file\n";
+            }
             if (device == Device::Client) {
                 std::cout << "\t--ip <IP>\t\t Set Server ip address\n";
             }
             std::cout << "\t-h, --help\t\t Display help\n";
+
             exit(0);
         } else {
             std::cout << "Error: Unknow argument " << arg[k] << "\n";
@@ -75,5 +94,5 @@ Args ParseArgs(const int argc, const char* arg[], Device device) {
         }
     }
 
-    return Args({proto, port, ip});
+    return Args({proto, port, ip, cert_path, key_path});
 }

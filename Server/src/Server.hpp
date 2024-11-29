@@ -21,6 +21,8 @@ class Server {
     Socket serv_socket_;
     Proto proto_;
     Port port_;
+    const char* crt_path_;
+    const char* key_path_;
 
     enum class Status {
         Up,
@@ -83,7 +85,8 @@ class Server {
     void PrintHistory();
     void PrintMsgHistory(ID id);
 public:
-    Server(Proto proto, Port port) : proto_(proto), port_(port) {}
+    Server(Proto proto, Port port, const char* crt_path = nullptr, const char* key_path = nullptr) 
+        : proto_(proto), port_(port), crt_path_(crt_path), key_path_(key_path) {}
     ~Server() {
         if (serv_socket_ >= 0) {
             close(serv_socket_);

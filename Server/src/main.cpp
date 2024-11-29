@@ -17,7 +17,7 @@ int main(const int argc, const char* argv[]) {
     ERR_load_crypto_strings();
 
     auto args = ParseArgs(argc, argv, Device::Server);
-    Server server(args.proto, args.port);
+    Server server(args.proto, args.port, args.crt_path, args.key_path);
     server.Start();
     return 0;
 }
