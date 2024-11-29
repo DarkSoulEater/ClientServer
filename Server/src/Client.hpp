@@ -4,6 +4,7 @@
 #include <vector>
 #include "DataBuffer.hpp"
 #include "Config.hpp"
+#include "TLS.hpp"
 
 class Client {
     const ID id_;
@@ -16,6 +17,11 @@ class Client {
     Port port_;
     Time timeout_;
 
+    SSL_CTX* ctx_;
+    bool under_tls_;
+    std::string tls_data_;
+    std::unique_ptr<TLS> tls_;
+
     ID NewID() {
         static ID id = 0;
         return id++;
@@ -24,7 +30,7 @@ class Client {
     std::vector<std::unique_ptr<DataBuffer>> msg_history_;
     std::vector<MsgStatus> msg_status_;
 public:
-    Client(Socket socket);
+    Client(Socket socket, TLS* tls = nullptr);
     Client(Port port, Time timeout, const sockaddr_storage& addr, socklen_t len);
     ~Client() {
         if (socket_ >= 0) {
@@ -80,5 +86,14 @@ public:
 
     MsgStatus GetMsgStatus(size_t k) {
         return msg_status_[k];
+    }
+
+    bool SupportedTLS() const { return under_tls_; }
+    std::string GetTLSData() {
+        return std::move(tls_data_);
+    }
+
+    TLS* GetTLS() {
+        return tls_.get();
     }
 };

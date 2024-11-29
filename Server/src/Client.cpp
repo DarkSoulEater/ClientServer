@@ -5,7 +5,12 @@
 #include "TCP.hpp"
 #include "UDP.hpp"
 
-Client::Client(Socket socket) : id_(NewID()), socket_(socket), status_(SocketStatus::Connected), sock_len_(sizeof(sockaddr_storage)), port_(-1)
+Client::Client(Socket socket, TLS* tls) 
+    : id_(NewID()), socket_(socket)
+    , status_(SocketStatus::Connected)
+    , sock_len_(sizeof(sockaddr_storage))
+    , port_(-1)
+    , tls_(tls)
 {}
 
 Client::Client(Port port, Time timeout, const sockaddr_storage &addr, socklen_t len)  
@@ -15,6 +20,7 @@ Client::Client(Port port, Time timeout, const sockaddr_storage &addr, socklen_t 
                               , sock_len_(len)
                               , port_(port)
                               , timeout_(timeout)
+                              , tls_(nullptr)
 {}
 
 bool Client::IsValid() {
@@ -71,6 +77,18 @@ std::unique_ptr<DataBuffer> Client::LoadData() {
             recv_size += recv_count;
         }
     } while (recv_size < data_size);
+
+    if (!under_tls_ && tls_
+     && data->Size() >= 3
+     && data->Buffer()[0] == 0x16
+     && data->Buffer()[1] == 0x3
+     && data->Buffer()[2] == 0x1) {
+        under_tls_ = true;
+    }
+
+    if (under_tls_) {
+        tls_data_ = tls_->Decode(*data);
+    }
     return data;
 }
 

@@ -6,8 +6,7 @@
 #include "UDP.hpp"
 #include "Console.hpp"
 #include <openssl/ssl.h>
-#include "tls/Endpoint.hpp"
-#include "tls/TLS.hpp"
+#include "TLS.hpp"
 
 //
 #include <list>
@@ -32,11 +31,9 @@ class Server {
     Status GetStatus();
     void SetStatus(Status status);
 
+    // For TLS
     bool support_tls_ = false;
     SSL_CTX* ssl_ctx_ = nullptr;
-    EncryptPoint* encr_point_ = nullptr;
-    std::unique_ptr<TLS> tls_;
-    
     bool InitTLS();
 
     std::mutex clients_mtx_;
@@ -60,7 +57,7 @@ class Server {
     int TCPInit();
     int UDPInit();
 
-    void TCPSendTo(const std::string& msg, ID id);
+    void TCPSendTo(const std::string& msg, ID id, bool need_encode = true);
     void UDPSendTO(const std::string& msg, ID id);
 
     void TCPHandlingAcceptLoop();

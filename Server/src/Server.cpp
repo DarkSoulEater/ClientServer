@@ -22,32 +22,25 @@ void Server::SetStatus(Status status) {
 bool Server::InitTLS() {
     ssl_ctx_ = SSL_CTX_new(TLS_method());
     if (!ssl_ctx_) {
-        // perror();
         ERR_print_errors_fp(stderr);
-        abort();
         return false;
     }
 
 
     if (SSL_CTX_use_certificate_file(ssl_ctx_, "./ca/server.crt", SSL_FILETYPE_PEM) != 1) {
-        abort();
+        return false;
     }
     if (SSL_CTX_use_PrivateKey_file(ssl_ctx_, "./ca/server.key", SSL_FILETYPE_PEM) != 1) {
-        abort();
+        return false;
     } 
 
     if (SSL_CTX_check_private_key(ssl_ctx_) != 1) {
-        perror("private key check");
-        abort();
         return false;
     }
 
-    // SSL_CTX_set_min_proto_version(ssl_ctx_, TLS1_2_VERSION);
     SSL_CTX_set_options(ssl_ctx_, SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3);
-    // SSL_CTX_set_default_verify_paths(ssl_ctx_);
 
-    encr_point_ = new EncryptPoint(ssl_ctx_, true);
-    tls_.reset(new TLS(ssl_ctx_, true, &console_));
+    console_.Log("Activate TLS supported");
     return true;
 }
 
@@ -147,7 +140,7 @@ int Server::UDPInit() {
     return 0;
 }
 
-void Server::TCPSendTo(const std::string &msg, ID id) {
+void Server::TCPSendTo(const std::string &msg, ID id, bool need_encode) {
     auto* client_ = FindClientByID(id);
     if (client_ == nullptr) {
         console_.Log(std::format("client ID={} doesn't connect", id));
@@ -162,13 +155,22 @@ void Server::TCPSendTo(const std::string &msg, ID id) {
         return;
     }
 
-    // size_t size = msg.size() + 1;
-    size_t size = msg.size();
+    if (need_encode) { // No log and save encr msg
+        console_.Log(std::format("Msg[{}] send to {}", msg, id));
+        auto data = std::make_unique<DataBuffer>(msg.size());
+        client.AddMsg(std::make_unique<DataBuffer>(msg), MsgStatus::Server);
+    }
+
+    // Encode
+    auto enc_msg = msg;
+    if (need_encode && client.SupportedTLS()) {
+        client.GetTLS()->Encode(enc_msg);
+    }
+
+    // Send
+    size_t size = enc_msg.size();
     tcp::Send(sock, &size, sizeof(size_t), 0);
-    tcp::Send(sock, msg.c_str(), size, 0);
-    console_.Log(std::format("Msg[{}] send to {}", msg, id));
-    auto data = std::make_unique<DataBuffer>(msg.size());
-    client.AddMsg(std::make_unique<DataBuffer>(msg), MsgStatus::Server);
+    tcp::Send(sock, enc_msg.c_str(), size, 0);
 }
 
 void Server::UDPSendTO(const std::string &msg, ID id) {
@@ -220,7 +222,8 @@ void Server::TCPHandlingAcceptLoop() {
         if (client_sock < 0 || GetStatus() == Status::Close)
             continue;
 
-        auto client = std::make_unique<Client>(client_sock);
+        auto client = std::make_unique<Client>(client_sock, (support_tls_ ? new TLS(ssl_ctx_, true, &console_) : nullptr));
+        client->GetTLS()->SetID(client->GetID());
         console_.Log(std::format("Connect new client: ID = {}", client.get()->GetID()));
 
         std::lock_guard<std::mutex> lock(clients_mtx_);
@@ -243,42 +246,10 @@ void Server::TCPWaitingDataLoop() {
                     auto data_ = client.LoadData(); // Safe unique ptr
                     auto& data = *data_.get();
 
-                    // if (!SSL_is_init_finished(encr_point_->ssl_)) {
-                    //     console_.Log("HS not finished");
-                    //     if (data.Size()) {
-                    //         BIO_write(encr_point_->input_, data.Buffer(), data.Size());
-                    //     }
-
-                    //     std::string s;
-                    //     console_.Log(std::format("SSL-STATE: {}", SSL_state_string_long(encr_point_->ssl_)));
-                    //     // int res = SSL_accept(encr_point_->ssl_);
-                    //     int res = SSL_do_handshake(encr_point_->ssl_);
-                    //     console_.Log(std::format("SSL-STATE: {}", SSL_state_string_long(encr_point_->ssl_)));
-                    //     auto err = SSL_get_error(encr_point_->ssl_, res);
-                    //     if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) {
-                    //         int n = 0;
-                    //         char buf[2024];
-                    //         do {    
-                    //             n = BIO_read(encr_point_->output_, buf, sizeof(buf));
-                    //         if (n > 0) {
-                    //             s.append(buf, n);
-                    //         } else if (!BIO_should_retry(encr_point_->output_))
-                    //             console_.Log("HS READ ERROR");
-                    //         } while (n>0);
-                    //     }
-                    //     std::thread([this, s, &client]{SendTo(s, client.GetID());}).detach();
-                    //     continue;
-                    // } else {
-                    //     console_.Log("HS finished");
-                    // }
-
-                    if (tls_ && data.Size()) {
-                        console_.Log("Decode");
-                        auto want_send_data = tls_->Decode(data); // Decode must change data
-                        console_.Log(std::format("{} \"{}\"", want_send_data.size(), want_send_data));
-                        // SendTo(want_send_data, client.GetID());
-                        if (!want_send_data.empty()) {
-                            std::thread([this, want_send_data, &client]{SendTo(want_send_data, client.GetID());}).detach();
+                    if (client.SupportedTLS()) {
+                        auto tls_data = client.GetTLSData();
+                        if (!tls_data.empty()) {
+                            std::thread([this, tls_data, &client]{TCPSendTo(tls_data, client.GetID(), false);}).detach();
                         }
                     }
 
@@ -316,8 +287,6 @@ void Server::UDPWaitingDataLoop() {
         );
 
         if (data.get()->Size() && getname_st == 0) {
-            // console_.Log(std::format("Recieve {} bytes from {}:{}. \"{}\"", data->Size(), host, service, data->Buffer()));
-
             Port port = std::stoi(service);
             auto* client = FindClientByPort(port);
             if (client == nullptr) {
