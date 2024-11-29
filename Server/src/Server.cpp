@@ -9,6 +9,16 @@
 #include <openssl/bio.h>
 #include <openssl/err.h>
 
+void SLLKeyLogCallback(const SSL* sll, const char* line) {
+    char* env_p = getenv("SSLKEYLOGFILE");
+    FILE* fp = nullptr;
+    if (env_p) {
+        if (fp = fopen(env_p, "a+")) {
+            fprintf(fp, "%s\n", line);
+        }
+    }
+}
+
 Server::Status Server::GetStatus() {
     std::lock_guard<std::mutex> lock(status_mtx_);
     return status_;
@@ -45,6 +55,7 @@ bool Server::InitTLS() {
     SSL_CTX_set_options(ssl_ctx_, SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3);
 
     console_.Log(std::format("Activate TLS supported [crt:{}, key:{}]", crt_path_, key_path_));
+    SSL_CTX_set_keylog_callback(ssl_ctx_, SLLKeyLogCallback);
     return true;
 }
 
