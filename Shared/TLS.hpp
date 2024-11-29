@@ -6,10 +6,22 @@
 #include "DataBuffer.hpp"
 #include "Console.hpp"
 
-#define Log(MSG)            \
-    if (console_) {         \
-        console_->Log(MSG);  \
+#define Log(MSG)                                                \
+    if (console_) {                                             \
+        if (is_server_) {                                       \
+            console_->Print(std::format("[TLS]: [{}] {}", id_, (MSG)));   \
+        } else {                                                \
+            console_->Print(std::format("[TLS]: {}", (MSG)));   \
+        }                                                       \
     }
+
+
+#define Err(MSG)                                                    \
+    if (console_) {                                                 \
+        console_->Print(std::format("[TLS]: ERROR!: {}", (MSG)));   \
+    }
+
+#define GetState() std::format("STATE: {}", SSL_state_string_long(ssl_))
 
 class TLS {
   private:
@@ -18,6 +30,7 @@ class TLS {
     BIO *output_;
     bool is_server_;
     Console* console_;
+    ID id_;
 
     enum SSLStatus {
         OK,
@@ -25,8 +38,7 @@ class TLS {
         Fail
     };
 
-    void print_ssl_error()
-    {
+    void print_ssl_error() { // TODO:
         BIO *bio = BIO_new(BIO_s_mem());
         ERR_print_errors(bio);
         char *buf;
@@ -51,7 +63,6 @@ class TLS {
         }
     }
 
-
     std::string BIORead(BIO* bio) {
         std::string res;
         char buff[1024];
@@ -60,19 +71,20 @@ class TLS {
             cnt = BIO_read(bio, buff, sizeof(buff));
             if (cnt > 0) {
                 res.append(buff, cnt);
-            } 
-            // else if (!BIO_should_retry(bio)) {
-            //     ret
-            // }
+            } else if (!BIO_should_retry(bio)) {
+                Err("BIORead faild");
+                return "";
+            }
         } while (cnt > 0);
         return res;
     }
 
   public:
     std::string Handshake() {
-        // console_.Log(std::format("SSL-STATE: {}", SSL_state_string_long(encr_point_->ssl_)));
+        Log("Send handshake")
+        Log(GetState());
         int res = SSL_do_handshake(ssl_);
-        // console_.Log(std::format("SSL-STATE: {}", SSL_state_string_long(encr_point_->ssl_)));
+        Log(GetState());
 
         auto status = SSLGetStatus(ssl_, res);
         if (status == SSLStatus::WantIO) {
@@ -81,7 +93,9 @@ class TLS {
         return std::string();
     }
 
-    TLS(SSL_CTX* ctx, bool is_server, Console* console = nullptr) : is_server_(is_server), console_(console) {
+    TLS(SSL_CTX* ctx, bool is_server, Console* console = nullptr)
+            : is_server_(is_server)
+            , console_(console) {
         ssl_ = SSL_new(ctx);
 
         if (is_server) {
@@ -94,10 +108,6 @@ class TLS {
         output_ = BIO_new(BIO_s_mem());
 
         SSL_set_bio(ssl_, input_, output_);
-
-        // if (!is_server) {
-        //     Handshake();
-        // }
     }
 
     std::string Decode(DataBuffer& data) {
@@ -107,8 +117,7 @@ class TLS {
         while (data_size) {
             int cnt = BIO_write(input_, data.Buffer() + data_start, data_size);
             if (cnt <= 0) {
-                Log("Error");
-                // TODO:
+                Err("decode write in bio falid");
                 data.Clear();
                 break;
             }
@@ -117,21 +126,10 @@ class TLS {
             data_size -= cnt;
 
             if (!SSL_is_init_finished(ssl_)) {
-                Log(std::format("SSL-STATE: {}", SSL_state_string_long(ssl_)));
+                Log(GetState());
                 int res = SSL_do_handshake(ssl_);
-                Log(std::format("SSL-STATE: {}", SSL_state_string_long(ssl_)));
-                // if (HandShake()) {
-                //     console_.Log("");
-                //     break;
-                // }
-
-                // if (!SSL_is_init_finished(ssl_)) {
-                //     data.Clear();
-                //     break;
-                // }
+                Log(GetState());
             }
-
-            Log(std::format("recv: [{}]", data.Size()));
 
             int res;
             char buff[1024];
@@ -140,85 +138,40 @@ class TLS {
                 res = SSL_read(ssl_, buff, sizeof(buff));
                 if (res > 0) {
                     str.append(buff, res);
-                    Log("READ");
-                } else {
-                    Log("STOP");
                 }
             } while(res > 0);
-            data.Clear(); // TODO:
+
+            data.Clear();
             if (!str.empty()){
                 data.Resize(str.size());
                 memcpy(data.Buffer(), str.c_str(), str.size());
-                // std::swap(data, DataBuffer(str));
             }
 
             auto status = SSLGetStatus(ssl_, res);
-            // console_.Log(std::format("Status {}", (int)status));
             if (status == SSLStatus::WantIO) {
-                // console_.Log("STATUS WANT IO");
                 want_send_data += BIORead(output_);
-                // Send(want_data);
             }
 
             if (status == SSLStatus::Fail) {
                 print_ssl_error();
+                Err("Decode faild");
             }
-
-            // console_.Log(std::format("Server: \"{}\"", data.Buffer()));
         }
-        // Log(std::format("{}", want_send_data));
         return want_send_data;
     }
 
     void Encode(std::string& msg) {
-        if (SSL_is_init_finished(ssl_)) {
-            Log("SH not finished");
+        if (!SSL_is_init_finished(ssl_)) {
             return;
         }
 
         SSL_write(ssl_, msg.c_str(), msg.size());
         msg = BIORead(output_);
     }
+
+    void SetID(ID id) {
+        id_ = id;
+    }
 };
 
 #undef Log
-
-// enum SSLStatus {
-//     OK,
-//     WantIO,
-//     Fail
-// };
-
-// SSLStatus SSLGetStatus(SSL* ssl, int n) {
-//     switch (SSL_get_error(ssl, n))
-//     {
-//     case SSL_ERROR_NONE:
-//         return SSLStatus::OK;
-
-//     case SSL_ERROR_WANT_WRITE:
-//     case SSL_ERROR_WANT_READ:
-//         return SSLStatus::WantIO;
-//     default:
-//         return SSLStatus::Fail;
-//     }
-// }
-
-// std::string BIORead(BIO* bio) {
-//     std::string res;
-//     char buff[1024];
-//     int cnt = 0;
-//     do {
-//         cnt = BIO_read(bio, buff, sizeof(buff));
-//         if (cnt > 0) {
-//             res.append(buff, cnt);
-//         } 
-//         // else if (!BIO_should_retry(bio)) {
-//         //     ret
-//         // }
-//     } while (cnt > 0);
-//     return res;
-// }
-
-// std::string SSLRead(SSL* sll) {
-
-// }
