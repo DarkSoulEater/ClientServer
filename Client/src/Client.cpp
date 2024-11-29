@@ -11,8 +11,6 @@
 #include <unistd.h>
 #include <string.h>
 
-#include "tls/TLS.hpp"
-
 int Client::TCPInit() {
     clinent_sock_ = tcp::Socket();
     if (clinent_sock_ < 0) {
@@ -60,7 +58,7 @@ void Client::WaitingDataLoop() {
         if (under_tls_ && data.Size()) {
             auto want_send_data = tls_->Decode(data);
             if (!want_send_data.empty()) {
-                Send(want_send_data);
+                Send(want_send_data, false);
             }
         }
         if (data.Size()) {
@@ -88,9 +86,6 @@ void Client::CommandLoop() {
             } break;
 
             case Command::Type::Send: {
-                if (under_tls_) {
-                    tls_->Encode(cmd.str);
-                }
                 std::thread([this, &cmd]{Send(cmd.str);}).detach();
             } break;
 
@@ -227,31 +222,17 @@ bool Client::InitTLS() {
         abort();
     }
 
-    // SSL_CTX_set_min_proto_version(ctx_, TLS1_2_VERSION);
     SSL_CTX_set_options(ctx_, SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3);
-    // SSL_CTX_set_default_verify_paths(ctx_);
 
-    // encr_point_ = new EncryptPoint(ctx_, false);
-    tls_.reset(new TLS(ctx_, false, &console_));
-    auto data = tls_->Handshake();
-    if (!data.empty()) {
-        Send(data);
+    if (need_tls_) {
+        tls_.reset(new TLS(ctx_, false, &console_));
+        auto data = tls_->Handshake();
+        if (!data.empty()) {
+            Send(data, false);
+        }
     }
     return true;
 }
-
-// bool Client::HandShake() {
-//     console_.Log(std::format("SSL-STATE: {}", SSL_state_string_long(encr_point_->ssl_)));
-//     int res = SSL_do_handshake(encr_point_->ssl_);
-//     console_.Log(std::format("SSL-STATE: {}", SSL_state_string_long(encr_point_->ssl_)));
-
-//     auto status = SSLGetStatus(encr_point_->ssl_, res);
-//     if (status == SSLStatus::WantIO) {
-//         auto data = BIORead(encr_point_->output_);
-//         Send(data);
-//     }
-//     return status;
-// }
 
 int Client::Start() {
     int init_st = (proto_ == Proto::TCP ? TCPInit() : UDPInit());
@@ -285,10 +266,17 @@ void Client::Stop() {
     exit(0);
 }
 
-void Client::Send(const std::string &msg) {
-    // size_t size = msg.size() + 1;
-    size_t size = msg.size();
+void Client::Send(const std::string &msg, bool need_encode) {
+    std::string enc_msg = msg;
+    if (need_encode && under_tls_) {
+        tls_->Encode(enc_msg);
+    }
+
+    size_t size = enc_msg.size();
     send(clinent_sock_, &size, sizeof(size_t), 0);
-    send(clinent_sock_, msg.c_str(), size, 0);
-    console_.Log(std::format("[{}] send to server", msg));
+    send(clinent_sock_, enc_msg.c_str(), size, 0);
+
+    if (need_encode) { // No log encode msg
+        console_.Log(std::format("[{}] send to server", msg));
+    }
 }

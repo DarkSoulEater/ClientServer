@@ -2,8 +2,7 @@
 #include "Config.hpp"
 #include "Console.hpp"
 #include "DataBuffer.hpp"
-#include "tls/Endpoint.hpp"
-#include "tls/TLS.hpp"
+#include "TLS.hpp"
 
 class Client {
 private:
@@ -41,10 +40,7 @@ private:
     bool under_tls_ = false;
 
     bool InitTLS();
-    EncryptPoint* encr_point_ = nullptr;
     std::unique_ptr<TLS> tls_;
-    // bool HandShake();
-    // DataBuffer TLSGetWantData();
     
 public:
     Client(Proto proto, Port port, in_addr_t server_ip) : proto_(proto), port_(port), serv_ip_(server_ip) {}
@@ -57,5 +53,5 @@ public:
     int Start();
     void Stop();
 
-    void Send(const std::string& msg);
+    void Send(const std::string& msg, bool need_encode = true);
 };
