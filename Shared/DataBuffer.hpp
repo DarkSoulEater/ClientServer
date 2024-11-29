@@ -22,4 +22,15 @@ public:
     size_t Size() { return size_; }
     char* Buffer() { return data_; }
     const char* Buffer() const { return data_; }
+    void Clear() { 
+        if (data_ != nullptr) {
+            delete[] data_;
+        }
+        data_ = nullptr;
+        size_ = 0;
+    }
+    void Resize(size_t new_size) {
+        Clear();
+        data_ = new char[size_ = new_size];
+    }
 };

@@ -2,6 +2,8 @@
 #include "Config.hpp"
 #include "Console.hpp"
 #include "DataBuffer.hpp"
+#include "tls/Endpoint.hpp"
+#include "tls/TLS.hpp"
 
 class Client {
 private:
@@ -34,6 +36,15 @@ private:
 
     std::unique_ptr<DataBuffer> TCPLoadData();
     std::unique_ptr<DataBuffer> UDPLoadData();
+
+    bool need_tls_ = true;
+    bool under_tls_ = false;
+
+    bool InitTLS();
+    EncryptPoint* encr_point_ = nullptr;
+    std::unique_ptr<TLS> tls_;
+    // bool HandShake();
+    // DataBuffer TLSGetWantData();
     
 public:
     Client(Proto proto, Port port, in_addr_t server_ip) : proto_(proto), port_(port), serv_ip_(server_ip) {}

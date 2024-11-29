@@ -11,6 +11,8 @@
 #include <unistd.h>
 #include <string.h>
 
+#include "tls/TLS.hpp"
+
 int Client::TCPInit() {
     clinent_sock_ = tcp::Socket();
     if (clinent_sock_ < 0) {
@@ -55,9 +57,16 @@ void Client::WaitingDataLoop() {
     while (GetStatus() == Status::Up) {
         auto data_ = (proto_ == Proto::TCP ? TCPLoadData() : UDPLoadData()); // Safe unique ptr
         auto& data = *data_.get();
+        if (under_tls_ && data.Size()) {
+            auto want_send_data = tls_->Decode(data);
+            if (!want_send_data.empty()) {
+                Send(want_send_data);
+            }
+        }
         if (data.Size()) {
             console_.Log(std::format("Server: \"{}\"", data.Buffer()));
         }
+ 
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 }
@@ -79,6 +88,9 @@ void Client::CommandLoop() {
             } break;
 
             case Command::Type::Send: {
+                if (under_tls_) {
+                    tls_->Encode(cmd.str);
+                }
                 std::thread([this, &cmd]{Send(cmd.str);}).detach();
             } break;
 
@@ -197,6 +209,50 @@ std::unique_ptr<DataBuffer> Client::UDPLoadData() {
     return data;
 }
 
+bool Client::InitTLS() {
+    if (!need_tls_) {
+        return false;
+    }
+
+    if (proto_ == Proto::UDP) {
+        console_.Log("TLS supported only for TCP");
+        need_tls_ = false;
+        return false;
+    }
+
+    static SSL_CTX* ctx_ = SSL_CTX_new(TLS_method());
+    if (!ctx_) {
+        perror("create ctx");
+        ERR_print_errors_fp(stderr);
+        abort();
+    }
+
+    // SSL_CTX_set_min_proto_version(ctx_, TLS1_2_VERSION);
+    SSL_CTX_set_options(ctx_, SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3);
+    // SSL_CTX_set_default_verify_paths(ctx_);
+
+    // encr_point_ = new EncryptPoint(ctx_, false);
+    tls_.reset(new TLS(ctx_, false, &console_));
+    auto data = tls_->Handshake();
+    if (!data.empty()) {
+        Send(data);
+    }
+    return true;
+}
+
+// bool Client::HandShake() {
+//     console_.Log(std::format("SSL-STATE: {}", SSL_state_string_long(encr_point_->ssl_)));
+//     int res = SSL_do_handshake(encr_point_->ssl_);
+//     console_.Log(std::format("SSL-STATE: {}", SSL_state_string_long(encr_point_->ssl_)));
+
+//     auto status = SSLGetStatus(encr_point_->ssl_, res);
+//     if (status == SSLStatus::WantIO) {
+//         auto data = BIORead(encr_point_->output_);
+//         Send(data);
+//     }
+//     return status;
+// }
+
 int Client::Start() {
     int init_st = (proto_ == Proto::TCP ? TCPInit() : UDPInit());
     if (init_st < 0) {
@@ -204,6 +260,8 @@ int Client::Start() {
     }
 
     SetStatus(Status::Up);
+
+    under_tls_ = InitTLS();
 
     auto data_waiter_thread_ = std::thread([this]{WaitingDataLoop();});
     auto console_loop_       = std::thread([this]{ConsoleLoop();});
@@ -228,7 +286,8 @@ void Client::Stop() {
 }
 
 void Client::Send(const std::string &msg) {
-    size_t size = msg.size() + 1;
+    // size_t size = msg.size() + 1;
+    size_t size = msg.size();
     send(clinent_sock_, &size, sizeof(size_t), 0);
     send(clinent_sock_, msg.c_str(), size, 0);
     console_.Log(std::format("[{}] send to server", msg));

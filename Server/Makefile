@@ -23,7 +23,7 @@ endif
 
 # Include library
 LIB_PATH =
-LIB_DEPEND = #boost_program_options
+LIB_DEPEND = crypto ssl #boost_program_options
 
 # Include SFML
 ifeq ($(filter SFML, $(LIBS)), SFML)

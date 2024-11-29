@@ -5,6 +5,9 @@
 #include "TCP.hpp"
 #include "UDP.hpp"
 #include "Console.hpp"
+#include <openssl/ssl.h>
+#include "tls/Endpoint.hpp"
+#include "tls/TLS.hpp"
 
 //
 #include <list>
@@ -28,6 +31,13 @@ class Server {
 
     Status GetStatus();
     void SetStatus(Status status);
+
+    bool support_tls_ = false;
+    SSL_CTX* ssl_ctx_ = nullptr;
+    EncryptPoint* encr_point_ = nullptr;
+    std::unique_ptr<TLS> tls_;
+    
+    bool InitTLS();
 
     std::mutex clients_mtx_;
     ClientList clients_;
